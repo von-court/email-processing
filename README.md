@@ -27,7 +27,14 @@
 
 ---
 
-## 1. Problem
+## Related Repositories
+
+| Repository | Fork of | Purpose |
+|-----------|---------|---------|
+| **von-court/protonmail-bridge-docker** | `shenxn/protonmail-bridge-docker` | Dockerised ProtonMail Bridge for headless IMAP/SMTP access |
+| **von-court/pm-cli** | `bscott/pm-cli` | Go-based CLI for ProtonMail Bridge operations (mail list, read, send, forward, etc.) |
+
+Both are used on the openclaw host by the `pm-cli-daemon`.
 
 The `email-processing` agent sandbox (`openclaw-sandbox-emt:email`) used a `pm-cli-secure` setuid wrapper to:
 1. Read `/run/secrets/proton-pat.env` (Proton Pass PAT)

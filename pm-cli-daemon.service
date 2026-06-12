@@ -1,0 +1,21 @@
+[Unit]
+Description=EPA pm-cli Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=node
+Group=node
+EnvironmentFile=/srv/openclaw/pm-cli-daemon/env
+Environment="PAT_FILE=/home/node/.openclaw/credentials/proton-pat.env"
+Environment="LISTEN_HOST=10.0.0.1"
+Environment="LISTEN_PORT=19999"
+Environment="PM_CLI_CONFIG=/home/node/.config/pm-cli/config.yaml"
+Environment="PASS_CLI_PATH=/usr/local/bin/pass-cli"
+Environment="PM_CLI_PATH=/usr/local/bin/pm-cli"
+ExecStart=/usr/bin/python3 /srv/openclaw/pm-cli-daemon/pm-cli-daemon.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

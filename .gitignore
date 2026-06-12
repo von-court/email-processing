@@ -1,0 +1,24 @@
+# Secrets — never commit credentials
+env
+.env
+.env.*
+proton-pat.env
+credentials/
+
+# External caches and research artifacts
+.firecrawl/
+.firecrawl/*
+
+# Agents / runtime state
+.agents/skills/email-processing/*.diff
+.exec-approvals.json
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# Node / Python
+node_modules/
+__pycache__/
+*.pyc

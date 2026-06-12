@@ -1,0 +1,12 @@
+bridge:
+  imap_host: 127.0.0.1
+  imap_port: 1143
+  smtp_host: 127.0.0.1
+  smtp_port: 1025
+  email: epa.vcom@proton.me
+  allowed_domains:
+    - vongerichten.com
+defaults:
+  mailbox: INBOX
+  limit: 20
+  format: json

@@ -75,6 +75,15 @@ def _ensure_login():
         log.info("pass-cli session already active")
         return
 
+    # Corrupted db from a previous token — force-clear before login
+    cp = sp.run(
+        [PASS_CLI_PATH, "logout", "--force"],
+        capture_output=True, text=True, env=env,
+    )
+    if cp.returncode != 0:
+        log.warning("pass-cli logout --force failed (may not exist yet): %s",
+                    cp.stderr.strip())
+
     cp = sp.run(
         [PASS_CLI_PATH, "login", "--pat", token],
         capture_output=True, text=True, env=env,

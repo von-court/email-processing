@@ -29,14 +29,15 @@
 
 ## Related Repositories
 
-| Repository | Fork of | Purpose |
-|-----------|---------|---------|
-| **von-court/protonmail-bridge-docker** | `shenxn/protonmail-bridge-docker` | Dockerised ProtonMail Bridge for headless IMAP/SMTP access |
-| **von-court/pm-cli** | `bscott/pm-cli` | Go-based CLI for ProtonMail Bridge operations (mail list, read, send, forward, etc.) |
+| Repository                             | Fork of                           | Purpose                                                                              |
+| -------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| **von-court/protonmail-bridge-docker** | `shenxn/protonmail-bridge-docker` | Dockerised ProtonMail Bridge for headless IMAP/SMTP access                           |
+| **von-court/pm-cli**                   | `bscott/pm-cli`                   | Go-based CLI for ProtonMail Bridge operations (mail list, read, send, forward, etc.) |
 
 Both are used on the openclaw host by the `pm-cli-daemon`.
 
 The `email-processing` agent sandbox (`openclaw-sandbox-emt:email`) used a `pm-cli-secure` setuid wrapper to:
+
 1. Read `/run/secrets/proton-pat.env` (Proton Pass PAT)
 2. Resolve the Proton Bridge password via `pass-cli`
 3. Run `pm-cli` with the bridge password injected
@@ -44,6 +45,7 @@ The `email-processing` agent sandbox (`openclaw-sandbox-emt:email`) used a `pm-c
 This broke when Docker's `no-new-privileges` security flag was enabled — it blocks all setuid binaries. The workaround (`proton-pat.env` readable by sandbox GID, `pass-cli` executable by all) gave the sandbox user **direct access to all credentials**, breaking the security model.
 
 Two paths were possible:
+
 - **Option A:** Disable `no-new-privileges` for the EPA sandbox only (1 line change, but weakens hardening)
 - **Option B (chosen):** Keep `no-new-privileges`, remove ALL credentials from the container, run credential resolution on the host via a daemon
 
@@ -64,7 +66,14 @@ The `email-processing` workspace (`/home/node/.openclaw/workspace-email-processi
 OpenClaw's `docker exec` wrapper (`src/agents/sandbox/docker-backend.ts`) also has no `-u` override — commands run as the configured user:
 
 ```ts
-const dockerArgs = ["exec", "-i", params.containerName, "sh", "-c", params.script];
+const dockerArgs = [
+  "exec",
+  "-i",
+  params.containerName,
+  "sh",
+  "-c",
+  params.script,
+];
 ```
 
 This means an in-container daemon starting as root would not help — `docker exec` would still run as 1000:1000. The only way to bypass this requires **modifying OpenClaw source**, which we explicitly avoided.
@@ -118,18 +127,18 @@ This means an in-container daemon starting as root would not help — `docker ex
 
 ## 4. What Changed
 
-| Component | Before | After |
-|-----------|--------|-------|
-| **Sandbox image** | `pass-cli`, `sudo`, `gnupg`, `pm-cli-secure` (setuid), `pm-cli` binary | Only `pm-cli-client.py` (masquerading as `pm-cli`). No pass-cli, no sudo, no credentials |
-| **PAT in sandbox** | Bind mount `/run/secrets/proton-pat.env` | **None** |
-| **pass-cli in sandbox** | `/usr/local/bin/pass-cli` executable by all | **None** (runs on host only) |
-| **pm-cli-secure** | Setuid wrapper, chmod 4755 | **Removed** |
-| **sudo** | `sandbox` user in sudo group, sudoers file | **Removed** |
-| **`no-new-privileges`** | Enabled (broke setuid) | **Still enabled** — not needed anymore |
-| **Host tools** | No pm-cli, no pass-cli | Both at `/usr/local/bin/` for daemon |
-| **Host config** | None | `/home/node/.config/pm-cli/config.yaml` with `allowed_domains` |
-| **openclaw.json** | `binds: [proton-pat.env:...]`, `dangerouslyAllowExternalBindSources: true` | `binds: []`, `env: {PM_CLI_DAEMON_ADDR, PM_CLI_DAEMON_TOKEN}` |
-| **Skill file** | All commands reference `pm-cli-secure` | All commands reference `pm-cli` (interface is identical) |
+| Component               | Before                                                                     | After                                                                                    |
+| ----------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Sandbox image**       | `pass-cli`, `sudo`, `gnupg`, `pm-cli-secure` (setuid), `pm-cli` binary     | Only `pm-cli-client.py` (masquerading as `pm-cli`). No pass-cli, no sudo, no credentials |
+| **PAT in sandbox**      | Bind mount `/run/secrets/proton-pat.env`                                   | **None**                                                                                 |
+| **pass-cli in sandbox** | `/usr/local/bin/pass-cli` executable by all                                | **None** (runs on host only)                                                             |
+| **pm-cli-secure**       | Setuid wrapper, chmod 4755                                                 | **Removed**                                                                              |
+| **sudo**                | `sandbox` user in sudo group, sudoers file                                 | **Removed**                                                                              |
+| **`no-new-privileges`** | Enabled (broke setuid)                                                     | **Still enabled** — not needed anymore                                                   |
+| **Host tools**          | No pm-cli, no pass-cli                                                     | Both at `/usr/local/bin/` for daemon                                                     |
+| **Host config**         | None                                                                       | `/home/node/.config/pm-cli/config.yaml` with `allowed_domains`                           |
+| **openclaw.json**       | `binds: [proton-pat.env:...]`, `dangerouslyAllowExternalBindSources: true` | `binds: []`, `env: {PM_CLI_DAEMON_ADDR, PM_CLI_DAEMON_TOKEN}`                            |
+| **Skill file**          | All commands reference `pm-cli-secure`                                     | All commands reference `pm-cli` (interface is identical)                                 |
 
 ---
 
@@ -141,7 +150,7 @@ This means an in-container daemon starting as root would not help — `docker ex
 
 ```bash
 # Symlink to system path
-ln -sf /srv/openclaw/pm-cli /usr/local/bin/pm-cli
+ln -sf /srv/pm-cli/pm-cli /usr/local/bin/pm-cli
 ```
 
 ### 5.2 Install `pass-cli` on host
@@ -190,6 +199,7 @@ pass-cli item view pass://<vault_id>/<item_id>/password --output json
 ```
 
 Vault and item IDs are hardcoded in the daemon. Discovered via:
+
 ```bash
 pass-cli vault list
 pass-cli item list --share-id <vault_id>
@@ -237,17 +247,17 @@ pass-cli item list --share-id <vault_id>
 
 ### 6.4 Config via environment variables
 
-| Env Var | Default | Description |
-|---------|---------|-------------|
-| `LISTEN_HOST` | `10.0.0.1` | Docker bridge gateway IP |
-| `LISTEN_PORT` | `19999` | TCP port |
-| `AUTH_TOKEN` | *(fail if empty)* | Shared secret (via `EnvironmentFile`) |
-| `PAT_FILE` | `/home/node/.openclaw/credentials/proton-pat.env` | Proton Pass PAT |
-| `PASS_CLI_PATH` | `/usr/local/bin/pass-cli` | Pass CLI binary |
-| `PM_CLI_PATH` | `/usr/local/bin/pm-cli` | pm-cli binary |
-| `PM_CLI_CONFIG` | `/home/node/.config/pm-cli/config.yaml` | pm-cli config |
-| `VAULT_ID` | *(hardcoded)* | Pass vault ID for EPA vault |
-| `ITEM_ID` | *(hardcoded)* | Pass item ID for Bridge password |
+| Env Var         | Default                                           | Description                           |
+| --------------- | ------------------------------------------------- | ------------------------------------- |
+| `LISTEN_HOST`   | `10.0.0.1`                                        | Docker bridge gateway IP              |
+| `LISTEN_PORT`   | `19999`                                           | TCP port                              |
+| `AUTH_TOKEN`    | _(fail if empty)_                                 | Shared secret (via `EnvironmentFile`) |
+| `PAT_FILE`      | `/home/node/.openclaw/credentials/proton-pat.env` | Proton Pass PAT                       |
+| `PASS_CLI_PATH` | `/usr/local/bin/pass-cli`                         | Pass CLI binary                       |
+| `PM_CLI_PATH`   | `/usr/local/bin/pm-cli`                           | pm-cli binary                         |
+| `PM_CLI_CONFIG` | `/home/node/.config/pm-cli/config.yaml`           | pm-cli config                         |
+| `VAULT_ID`      | _(hardcoded)_                                     | Pass vault ID for EPA vault           |
+| `ITEM_ID`       | _(hardcoded)_                                     | Pass item ID for Bridge password      |
 
 ---
 
@@ -333,15 +343,15 @@ CMD ["sleep", "infinity"]
 
 ### 8.3 What was removed
 
-| Package/File | Reason removed |
-|-------------|----------------|
-| `gnupg`, `pass` | `pass-cli` is no longer in the container |
-| `sudo` | No privilege escalation needed |
-| `curl -fsSL proton.me/download/pass-cli/...` | `pass-cli` installed on host instead |
-| `pm-cli` binary copy | Not needed in sandbox |
-| `pm-cli-secure` | Setuid wrapper obsolete |
-| `/etc/sudoers.d/pm-cli` | Sudo access no longer needed |
-| `usermod -aG sudo sandbox` | Sandbox user no longer needs sudo |
+| Package/File                                 | Reason removed                           |
+| -------------------------------------------- | ---------------------------------------- |
+| `gnupg`, `pass`                              | `pass-cli` is no longer in the container |
+| `sudo`                                       | No privilege escalation needed           |
+| `curl -fsSL proton.me/download/pass-cli/...` | `pass-cli` installed on host instead     |
+| `pm-cli` binary copy                         | Not needed in sandbox                    |
+| `pm-cli-secure`                              | Setuid wrapper obsolete                  |
+| `/etc/sudoers.d/pm-cli`                      | Sudo access no longer needed             |
+| `usermod -aG sudo sandbox`                   | Sandbox user no longer needs sudo        |
 
 ---
 
@@ -430,11 +440,11 @@ sudo journalctl -u pm-cli-daemon -f
 
 ### 10.3 Changes summary
 
-| Before | After |
-|--------|-------|
-| `"binds": ["/home/node/.openclaw/credentials/proton-pat.env:/run/secrets/proton-pat.env:ro"]` | `"binds": []` |
-| `"dangerouslyAllowExternalBindSources": true` | **Removed entirely** |
-| No `env` | `"PM_CLI_DAEMON_ADDR"` + `"PM_CLI_DAEMON_TOKEN"` added |
+| Before                                                                                        | After                                                  |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `"binds": ["/home/node/.openclaw/credentials/proton-pat.env:/run/secrets/proton-pat.env:ro"]` | `"binds": []`                                          |
+| `"dangerouslyAllowExternalBindSources": true`                                                 | **Removed entirely**                                   |
+| No `env`                                                                                      | `"PM_CLI_DAEMON_ADDR"` + `"PM_CLI_DAEMON_TOKEN"` added |
 
 ---
 
@@ -445,11 +455,13 @@ sudo journalctl -u pm-cli-daemon -f
 **Attacker gains code execution inside the sandbox** (LLM "jailbreak", buggy tool call, etc.)
 
 **What they can do:**
+
 - Execute `pm-cli mail ...` commands (proxied to daemon)
 - Read files in the read-only container
 - Connect to `10.0.0.1:19999` and send requests
 
 **What they CANNOT do:**
+
 - ✅ Read the PAT file (not mounted)
 - ✅ Run `pass-cli` binary (not present)
 - ✅ Resolve bridge password directly
@@ -466,11 +478,13 @@ sudo journalctl -u pm-cli-daemon -f
 **Attacker gains access to the daemon's TCP port or the host**
 
 **What they can do:**
+
 - Read the PAT (it has it)
 - Resolve bridge password
 - Send emails to any domain (if they can bypass daemon validation)
 
 **Mitigations:**
+
 - Daemon binds to `10.0.0.1` (bridge network), not `0.0.0.0`
 - Only Docker containers on the bridge network can reach the port
 - Auth token required for every request
@@ -498,12 +512,14 @@ docker run --rm --network bridge --user 1000:1000 \
 ```
 
 **Result:**
+
 ```json
 {
   "message": "Successfully connected and authenticated to Proton Bridge",
   "success": true
 }
 ```
+
 ✅ Bridge authentication works correctly.
 
 ### 12.2 Credential isolation test
@@ -517,10 +533,12 @@ docker run --rm --network bridge --user 1000:1000 \
 ```
 
 **Result:**
+
 ```
 ls: cannot access '/usr/local/bin/pass-cli': No such file or directory
 ls: cannot access '/run/secrets/proton-pat.env': No such file or directory
 ```
+
 ✅ No credentials inside the sandbox.
 
 ### 12.3 Domain validation test
@@ -534,10 +552,12 @@ docker run --rm --network bridge --user 1000:1000 \
 ```
 
 **Result:**
+
 ```
 Domain not allowed: evil@example.com
 EXIT:1
 ```
+
 ✅ Domain blocking enforced.
 
 ### 12.4 Docker hardening flags
@@ -549,32 +569,34 @@ docker inspect openclaw-sbx-agent-email-processing-XXX --format='{{.Config.Image
 ```
 
 **Result:**
+
 ```
 [no-new-privileges:true]
 [NET_RAW NET_ADMIN]
 openclaw-sandbox-emt:email
 ```
+
 ✅ `no-new-privileges` still enabled. `cap-drop ALL` active. New image in use.
 
 ---
 
 ## 13. Files on Server
 
-| File | Description |
-|------|-------------|
-| `/srv/openclaw/pm-cli-daemon/pm-cli-daemon.py` | Main daemon script (Python) |
-| `/srv/openclaw/pm-cli-daemon/pm-cli-client.py` | Sandbox client script (Python) |
-| `/srv/openclaw/pm-cli-daemon/env` | Secret token file (0400, node:node) |
-| `/etc/systemd/system/pm-cli-daemon.service` | Systemd service unit |
-| `/srv/openclaw/Dockerfile.sandbox-epa` | Sandbox image Dockerfile |
-| `/srv/openclaw/pm-cli-client.py` | Build-context copy of client |
-| `/srv/openclaw/Dockerfile.sandbox-epa.backup.YYYYMMDD-HHMMSS` | Old Dockerfile backup |
-| `/usr/local/bin/pm-cli` | Host pm-cli binary (Go, symlink to /srv/openclaw/pm-cli) |
-| `/usr/local/bin/pass-cli` | Host pass-cli binary (Proton's tool) |
-| `/home/node/.config/pm-cli/config.yaml` | Host pm-cli config with allowed_domains |
-| `/home/node/.openclaw/openclaw.json` | OpenClaw configuration |
-| `/home/node/.openclaw/workspace-email-processing/skills/email-processing/SKILL.md` | Agent skill file (updated `pm-cli-secure` → `pm-cli`) |
-| `/home/node/.openclaw/workspace-email-processing/skills/email-processing/SKILL.md.backup.*` | Old skill backup |
+| File                                                                                        | Description                                            |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `/srv/openclaw/pm-cli-daemon/pm-cli-daemon.py`                                              | Main daemon script (Python)                            |
+| `/srv/openclaw/pm-cli-daemon/pm-cli-client.py`                                              | Sandbox client script (Python)                         |
+| `/srv/openclaw/pm-cli-daemon/env`                                                           | Secret token file (0400, node:node)                    |
+| `/etc/systemd/system/pm-cli-daemon.service`                                                 | Systemd service unit                                   |
+| `/srv/openclaw/Dockerfile.sandbox-epa`                                                      | Sandbox image Dockerfile                               |
+| `/srv/openclaw/pm-cli-client.py`                                                            | Build-context copy of client                           |
+| `/srv/openclaw/Dockerfile.sandbox-epa.backup.YYYYMMDD-HHMMSS`                               | Old Dockerfile backup                                  |
+| `/usr/local/bin/pm-cli`                                                                     | Host pm-cli binary (Go, symlink to /srv/pm-cli/pm-cli) |
+| `/usr/local/bin/pass-cli`                                                                   | Host pass-cli binary (Proton's tool)                   |
+| `/home/node/.config/pm-cli/config.yaml`                                                     | Host pm-cli config with allowed_domains                |
+| `/home/node/.openclaw/openclaw.json`                                                        | OpenClaw configuration                                 |
+| `/home/node/.openclaw/workspace-email-processing/skills/email-processing/SKILL.md`          | Agent skill file (updated `pm-cli-secure` → `pm-cli`)  |
+| `/home/node/.openclaw/workspace-email-processing/skills/email-processing/SKILL.md.backup.*` | Old skill backup                                       |
 
 ---
 
@@ -640,6 +662,6 @@ pass-cli item list --share-id <vault_id>
 
 ---
 
-*Document version: Final v1.0*
-*Deployed: 2026-06-11*
-*Status: Production-ready*
+_Document version: Final v1.0_
+_Deployed: 2026-06-11_
+_Status: Production-ready_

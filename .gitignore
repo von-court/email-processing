@@ -9,10 +9,6 @@ credentials/
 .firecrawl/
 .firecrawl/*
 
-# Agents / runtime state
-.agents/skills/email-processing/*.diff
-.exec-approvals.json
-
 # IDE / editor
 .vscode/
 .idea/

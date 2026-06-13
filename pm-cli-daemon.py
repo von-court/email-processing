@@ -59,7 +59,7 @@ def _load_pat_env():
 
 # ---------- pass-cli session init ----------
 def _login():
-    """Always log in fresh — don't trust stale local db."""
+    """Always log in fresh - don't trust stale local db."""
     token = os.environ.get("PROTON_PASS_PERSONAL_ACCESS_TOKEN", "")
     if not token:
         raise RuntimeError("PROTON_PASS_PERSONAL_ACCESS_TOKEN not set")
@@ -70,7 +70,7 @@ def _login():
         capture_output=True, text=True, env=env,
     )
     if cp.returncode != 0:
-        log.warning("logout --force failed: %s", cp.stderr.strip()) — no more stale-session outages)
+        log.warning("logout --force failed: %s", cp.stderr.strip())
     cp = sp.run(
         [PASS_CLI_PATH, "login", "--pat", token],
         capture_output=True, text=True, env=env,

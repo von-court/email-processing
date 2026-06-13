@@ -58,19 +58,32 @@ def _load_pat_env():
 
 
 # ---------- pass-cli session init ----------
-def _login():
-    """Always log in fresh — don't trust stale local db."""
+def _ensure_login():
+    """Personal-access-token login (idempotent within a session)."""
     token = os.environ.get("PROTON_PASS_PERSONAL_ACCESS_TOKEN", "")
     if not token:
         raise RuntimeError("PROTON_PASS_PERSONAL_ACCESS_TOKEN not set")
     env = os.environ.copy()
     env["PROTON_PASS_AGENT_REASON"] = AGENT_REASON
+
+    # Check if already logged in first
+    cp = sp.run(
+        [PASS_CLI_PATH, "info"],
+        capture_output=True, text=True, env=env,
+    )
+    if cp.returncode == 0:
+        log.info("pass-cli session already active")
+        return
+
+    # Corrupted db from a previous token — force-clear before login
     cp = sp.run(
         [PASS_CLI_PATH, "logout", "--force"],
         capture_output=True, text=True, env=env,
     )
     if cp.returncode != 0:
-        log.warning("logout --force failed: %s", cp.stderr.strip()) — no more stale-session outages)
+        log.warning("pass-cli logout --force failed (may not exist yet): %s",
+                    cp.stderr.strip())
+
     cp = sp.run(
         [PASS_CLI_PATH, "login", "--pat", token],
         capture_output=True, text=True, env=env,
@@ -85,7 +98,7 @@ def _login():
 
 # ---------- bridge password resolution ----------
 def _resolve_bridge_password():
-    """Resolve bridge password. Retries login if session expired."""
+    """Resolve the ProtonMail Bridge password via pass-cli."""
     env = os.environ.copy()
     env["PROTON_PASS_AGENT_REASON"] = AGENT_REASON
     uri = f"pass://{VAULT_ID}/{ITEM_ID}/password"
@@ -93,20 +106,9 @@ def _resolve_bridge_password():
         [PASS_CLI_PATH, "item", "view", uri, "--output", "json"],
         capture_output=True, text=True, env=env,
     )
-    if cp.returncode == 0:
-        password = cp.stdout.strip()
-        if password:
-            return password
-        raise RuntimeError("empty password")
-    err = cp.stderr.strip()
-    log.warning("Session expired, re-logging in: %s", err)
-    _login()
-    cp = sp.run(
-        [PASS_CLI_PATH, "item", "view", uri, "--output", "json"],
-        capture_output=True, text=True, env=env,
-    )
     if cp.returncode != 0:
-        raise RuntimeError(f"pass-cli failed (after re-login): {cp.stderr.strip()}")
+        raise RuntimeError(
+            f"pass-cli failed: {cp.stderr.strip()}")
     password = cp.stdout.strip()
     if not password:
         raise RuntimeError("empty password")
@@ -221,7 +223,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     _load_pat_env()
-    _login()
+    _ensure_login()
 
     log.info("Starting pm-cli-daemon on %s:%d",
         LISTEN_HOST, LISTEN_PORT)
